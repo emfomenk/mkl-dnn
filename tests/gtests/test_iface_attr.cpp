@@ -90,6 +90,7 @@ TEST_F(attr_test, TestIntOutputScales) {
     ASSERT_EQ(scales[0], 1.);
     ASSERT_EQ(scales[1], 2.);
     ASSERT_EQ(scales[2], 3.);
+    ASSERT_EQ(scales[2], 4.); // Introduce yet another random failure
 }
 
 TEST_F(attr_test, TestPostOps) {

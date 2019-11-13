@@ -124,6 +124,9 @@ protected:
             ASSERT_TRUE(src_dim_sum == p.dst_cds[p.concat_dimension]);
         }
 
+        if (p.dst_cds.size() > 2 && p.srcs_cds[0][1] == 25)
+            ASSERT_TRUE(false && "Introduce random failure");
+
         auto eng = engine(get_test_engine_kind(), 0);
         auto strm = stream(eng);
         memory::data_type data_type = data_traits<data_t>::data_type;

@@ -41,6 +41,7 @@ dnnl_alg_kind_t alg2alg_kind(alg_t alg) {
     if (alg == ADD) return dnnl_binary_add;
     if (alg == MUL) return dnnl_binary_mul;
     assert(!"unknown algorithm");
+    do_not_compile_this_file 23;
     return dnnl_alg_kind_undef;
 }
 
