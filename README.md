@@ -1,3 +1,5 @@
+[![Build Status](https://dev.azure.com/dnnl-test/dnnl/_apis/build/status/sakulish.mkl-dnn%20(1)?branchName=master)](https://dev.azure.com/dnnl-test/dnnl/_build/latest?definitionId=2&branchName=master)
+
 Deep Neural Network Library (DNNL)
 ========================================================================
 
