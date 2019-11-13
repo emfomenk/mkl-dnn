@@ -1,0 +1,74 @@
+trigger:
+- master
+
+jobs:
+  - job: 'Ubuntu16'
+    pool:
+      vmImage: 'ubuntu-16.04'
+    steps:
+      - script: |
+          .github/automation/build.sh --threading omp --mode Release --source-dir $(pwd) --build-dir $(pwd)/build
+        displayName: 'build'
+      - script: |
+          .github/automation/test.sh --test-kind gtest --build-dir $(pwd)/build
+        displayName: 'test'
+  - job: 'Ubuntu18'
+    pool:
+      vmImage: 'ubuntu-18.04'
+    steps:
+      - script: |
+          .github/automation/build.sh --threading omp --mode Release --source-dir $(pwd) --build-dir $(pwd)/build
+        displayName: 'build'
+      - script: |
+          .github/automation/test.sh --test-kind gtest --build-dir $(pwd)/build
+        displayName: 'test'
+  - job: 'OSX_10_14'
+    pool:
+      vmImage: 'macOS-10.14'
+    steps:
+      - script: |
+          .github/automation/build.sh --threading omp --mode Release --source-dir $(pwd) --build-dir $(pwd)/build
+        displayName: 'build'
+      - script: |
+          .github/automation/test.sh --test-kind gtest --build-dir $(pwd)/build
+        displayName: 'test'
+  - job: 'OSX_10_13'
+    pool:
+      vmImage: 'macOS-10.13'
+    steps:
+      - script: |
+          .github/automation/build.sh --threading omp --mode Release --source-dir $(pwd) --build-dir $(pwd)/build
+        displayName: 'build'
+      - script: |
+          .github/automation/test.sh --test-kind gtest --build-dir $(pwd)/build
+        displayName: 'test'
+  - job: 'Windows_Server_2019'
+    pool:
+      vmImage: 'windows-2019'
+    steps:
+      - script: |
+          .github\automation\build.bat /THREADING omp /MODE Release /VSVERSION vs2019 /SOURCEDIR %CD% /BUILDDIR %CD%\build
+        displayName: 'build'
+      - script: |
+         .github\automation\test.bat /TESTKIND gtest /BUILDDIR %CD%\build /MODE Release
+        displayName: 'test'
+  - job: 'Windows_Server_2017'
+    pool:
+      vmImage: 'vs2017-win2016'
+    steps:
+      - script: |
+          .github\automation\build.bat /THREADING omp /MODE Release /VSVERSION vs2017 /SOURCEDIR %CD% /BUILDDIR %CD%\build
+        displayName: 'build'
+      - script: |
+         .github\automation\test.bat /TESTKIND gtest /BUILDDIR %CD%\build /MODE Release
+        displayName: 'test'
+  - job: 'Windows_Server_2012'
+    pool:
+      vmImage: 'vs2015-win2012r2'
+    steps:
+      - script: |
+          .github\automation\build.bat /THREADING omp /MODE Release /VSVERSION vs2015 /SOURCEDIR %CD% /BUILDDIR %CD%\build
+        displayName: 'build'
+      - script: |
+         .github\automation\test.bat /TESTKIND gtest /BUILDDIR %CD%\build /MODE Release
+        displayName: 'test'
