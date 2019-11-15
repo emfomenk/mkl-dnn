@@ -72,6 +72,8 @@ fi
 
 cd "${SORUCE_DIR}"
 echo "Calling CMake with otions: ${CMAKE_OPTIONS}"
-cmake . -B${BUILD_DIR} ${CMAKE_OPTIONS} && cd ${BUILD_DIR} && make -k ${MAKE_OP} 2>&1 | tee build.log
 
-echo "DONE"
+cmake . -B${BUILD_DIR} ${CMAKE_OPTIONS} && cd ${BUILD_DIR}
+make -k ${MAKE_OP}
+
+exit $?

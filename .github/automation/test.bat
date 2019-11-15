@@ -22,6 +22,8 @@ IF "%1" == "/TESTKIND" SET "TESTKIND=%2"
 IF "%1" == "/BUILDDIR" SET "BUILDDIR=%2"
 IF "%1" == "/MODE" SET "MODE=%2"
 
+IF "%1" == "/REPORTDIR" SET "REPORTDIR=%2"
+
 SHIFT
 SHIFT
 IF NOT "%1" == "" GOTO process_arguments
@@ -34,6 +36,8 @@ IF NOT "%TESTKIND%" == "benchdnn" IF NOT "%TESTKIND%" == "gtest" (
     ECHO "Error: unknown test kind: %TESTKIND%"
     EXIT 1
 )
+
+IF NOT "%REPORTDIR%" == "" SET "GTEST_OUTPUT=%REPORTDIR%\report\test_report.xml"
 
 SET "PATH=%BUILDDIR%\src\%MODE%;%PATH%"
 SET "LIB=%BUILDDIR%\src\%MODE%;%LIB%"

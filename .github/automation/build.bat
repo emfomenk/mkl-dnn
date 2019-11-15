@@ -55,6 +55,7 @@ cmake ./CMakeLists.txt %CMAKE_OPTIONS%
 CD /D %BUILDDIR%
 
 cmake --build . --config Release
-ECHO "DONE"
+
+EXIT %ERRORLEVEL%
 
 ENDLOCAL

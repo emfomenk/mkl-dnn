@@ -26,6 +26,9 @@ while [[ $# -gt 0 ]]; do
         --build-dir)
         BUILD_DIR="$2"
         ;;
+        --report-dir)
+        REPORT_DIR="$2"
+        ;;
         *)
         echo "Unknown option: $1"
         exit 1
@@ -37,9 +40,9 @@ done
 
 
 if [ "$(uname)" == "Linux" ]; then
-    export OMP_NUM_THREADS="-j$(grep -c processor /proc/cpuinfo)"
+    export OMP_NUM_THREADS="$(grep -c processor /proc/cpuinfo)"
 else
-    export OMP_NUM_THREADS="-j$(sysctl -n hw.physicalcpu)"
+    export OMP_NUM_THREADS="$(sysctl -n hw.physicalcpu)"
 fi
 
 if [ "${TEST_KIND}" == "gtest" ]; then
@@ -49,6 +52,10 @@ elif [ "${TEST_KIND}" == "benchdnn" ]; then
 else
     echo "Error: unknown test kind: ${TEST_KIND}"
     exit 1
+fi
+
+if  [[ ! -z "${REPORT_DIR}" ]]; then
+    export GTEST_OUTPUT="${REPORT_DIR}/report/test_report.xml"
 fi
 
 CTEST_OPTS="${CTEST_OPTS} --output-on-failure"
