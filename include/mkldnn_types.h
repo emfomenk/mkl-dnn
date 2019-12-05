@@ -1286,6 +1286,9 @@ typedef enum {
     mkldnn_eager,
     /** Lazy stream. */
     mkldnn_lazy,
+    /** Dummy eager stream that doesn't hold the primitives.
+     * Call to mkldnn_stream_rerun() always returns mkldnn_invalid_arguments. */
+    mkldnn_eager_dummy,
 } mkldnn_stream_kind_t;
 
 /** @struct mkldnn_stream
