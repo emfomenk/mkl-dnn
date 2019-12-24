@@ -32,6 +32,15 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
         const memory_desc_t *dst_desc, const dims_t strides,
         const dims_t dilates, const dims_t padding_l, const dims_t padding_r);
 
+memory_desc_t *conv_prop_invariant_src_d(convolution_desc_t *desc);
+memory_desc_t *conv_prop_invariant_wei_d(convolution_desc_t *desc);
+memory_desc_t *conv_prop_invariant_bia_d(convolution_desc_t *desc);
+memory_desc_t *conv_prop_invariant_dst_d(convolution_desc_t *desc);
+const memory_desc_t *conv_prop_invariant_src_d(const convolution_desc_t *desc);
+const memory_desc_t *conv_prop_invariant_wei_d(const convolution_desc_t *desc);
+const memory_desc_t *conv_prop_invariant_bia_d(const convolution_desc_t *desc);
+const memory_desc_t *conv_prop_invariant_dst_d(const convolution_desc_t *desc);
+
 struct convolution_fwd_pd_t;
 
 struct convolution_pd_t : public primitive_desc_t {
@@ -156,19 +165,16 @@ struct convolution_pd_t : public primitive_desc_t {
     }
 
     const memory_desc_t *invariant_src_md() const {
-        return desc()->prop_kind == prop_kind::backward_data ? diff_src_md()
-                                                             : src_md();
+        return conv_prop_invariant_src_d(desc());
     }
     const memory_desc_t *invariant_wei_md(int index = 0) const {
-        return desc()->prop_kind == prop_kind::backward_weights
-                ? diff_weights_md(index)
-                : weights_md(index);
+        return conv_prop_invariant_wei_d(desc());
     }
     const memory_desc_t *invariant_bia_md() const {
-        return invariant_wei_md(1);
+        return conv_prop_invariant_bia_d(desc());
     }
     const memory_desc_t *invariant_dst_md() const {
-        return is_fwd() ? dst_md() : diff_dst_md();
+        return conv_prop_invariant_dst_d(desc());
     }
 
 protected:
