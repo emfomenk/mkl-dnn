@@ -18,6 +18,7 @@
 #define VERBOSE_HPP
 
 #include <cinttypes>
+#include <mutex>
 #include <stdio.h>
 
 #include "c_types_map.hpp"
@@ -42,24 +43,43 @@ const char *get_isa_info();
 #define DNNL_VERBOSE_BUF_LEN 1
 #endif
 
-void init_info(batch_normalization_pd_t *s, char *buffer);
-void init_info(binary_pd_t *s, char *buffer);
-void init_info(concat_pd_t *s, char *buffer);
-void init_info(convolution_pd_t *s, char *buffer);
-void init_info(deconvolution_pd_t *s, char *buffer);
-void init_info(eltwise_pd_t *s, char *buffer);
-void init_info(gemm_pd_t *s, char *buffer);
-void init_info(inner_product_pd_t *s, char *buffer);
-void init_info(layer_normalization_pd_t *s, char *buffer);
-void init_info(lrn_pd_t *s, char *buffer);
-void init_info(matmul_pd_t *s, char *buffer);
-void init_info(pooling_pd_t *s, char *buffer);
-void init_info(reorder_pd_t *s, char *buffer);
-void init_info(resampling_pd_t *s, char *buffer);
-void init_info(rnn_pd_t *s, char *buffer);
-void init_info(shuffle_pd_t *s, char *buffer);
-void init_info(softmax_pd_t *s, char *buffer);
-void init_info(sum_pd_t *s, char *buffer);
+/** A container for primitive desc verbose string.
+ *
+ * The buffer is kept in `str` member. All housekeeping is on caller... The
+ * structure only helps with the synchronization and lazy copying.
+ *
+ * Synchronization model:
+ *  - Both `is_initialized` and `initialization_flag` are controlled by a caller
+ *    code. The `initialization_flag` allows avoiding race conditions.
+ *  - Once the info is initialized, the `initialized` flag set to true, and
+ *    (in case of primitive desc copy) the `initialization_flag` essentially
+ *    becomes redundant.
+ */
+struct pd_info_t {
+    pd_info_t() = default;
+    pd_info_t(const pd_info_t &rhs)
+        : str_(rhs.str_), is_initialized_(rhs.is_initialized_) {}
+    pd_info_t &operator=(const pd_info_t &rhs) {
+        is_initialized_ = rhs.is_initialized_;
+        str_ = rhs.str_;
+        return *this;
+    }
+
+    const char *c_str() const { return str_.c_str(); }
+    bool is_initialized() const { return is_initialized_; }
+
+    void init(const primitive_desc_t *pd);
+
+private:
+    std::string str_;
+
+#if defined(DISABLE_VERBOSE)
+    bool is_initialized_ = true; // no verbose -> info is always ready
+#else
+    bool is_initialized_ = false;
+#endif
+    std::once_flag initialization_flag_;
+};
 
 } // namespace impl
 } // namespace dnnl
