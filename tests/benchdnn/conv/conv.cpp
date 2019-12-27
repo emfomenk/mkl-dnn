@@ -594,6 +594,30 @@ inline int init_pd(dnnl_engine_t eng, const prb_t *p,
     return OK;
 }
 
+static void execute_unmap_args(
+        const args_t &args, std::vector<dnnl_exec_arg_t> &dnnl_args) {
+    dnnl_args.resize(args.size());
+    for (int i = 0; i < args.size(); ++i) {
+        if (args.dnn_mem(i).is_mapped()) args.dnn_mem(i).unmap();
+
+        dnnl_args[i].arg = args.arg(i);
+        dnnl_args[i].memory = args.dnn_mem(i).m_;
+    }
+}
+
+static void execute_map_args(const args_t &args) {
+    for (int i = 0; i < args.size(); ++i)
+        if (!args.dnn_mem(i).is_mapped()) args.dnn_mem(i).map();
+}
+
+static inline bool should_stop(const benchdnn_timer_t &t) {
+    const bool stop = false
+            || (fix_times_per_prb && t.times() >= fix_times_per_prb)
+            || (!fix_times_per_prb && t.total_ms() >= max_ms_per_prb
+                    && t.times() >= min_times_per_prb);
+    return stop;
+}
+
 int doit(const prb_t *p, res_t *r) {
     if (bench_mode == LIST) return r->state = LISTED, OK;
 
@@ -711,7 +735,203 @@ int doit(const prb_t *p, res_t *r) {
         SAFE(FAIL, CRIT);
     }
 
-    measure_perf(r->timer, c, args);
+    const int BM_EXEC = 0;
+    const int BM_CREATE_EXEC = 1;
+    const int BM_CLONE_PD_CREATE_EXEC = 2;
+    const int BM_CREATE_PD_CREATE_EXEC = 3;
+
+    static int benchmark_mode = -1;
+    if (benchmark_mode < 0) {
+        const char *str = getenv("BENCHDNN_BENCHMARK_MODE");
+        benchmark_mode = str ? str[0] - '0' : 0;
+        if (benchmark_mode < 0 || benchmark_mode > 4) benchmark_mode = BM_EXEC;
+        printf("@@@ benchmark_mode:%d\n", benchmark_mode);
+    }
+
+    if (benchmark_mode > 0 && (bench_mode & PERF)) {
+        const_dnnl_primitive_desc_t const_cpd = nullptr;
+        dnnl_primitive_get_primitive_desc(c, &const_cpd);
+
+        dnnl_convolution_desc_t cd {};
+        auto dnnl_attr = create_dnnl_attr(p->attr, p->oc, p->scales);
+
+        if (benchmark_mode == BM_CREATE_PD_CREATE_EXEC) {
+            dnnl_memory_desc_t src_d, wei_d, bia_d, dst_d;
+
+            int ndims = is_problem_3d(p) ? 5 : is_problem_1d(p) ? 3 : 4;
+            dnnl_dims_t src_1d_dims = {p->mb, p->ic, p->iw};
+            dnnl_dims_t src_2d_dims = {p->mb, p->ic, p->ih, p->iw};
+            dnnl_dims_t src_3d_dims = {p->mb, p->ic, p->id, p->ih, p->iw};
+
+            dnnl_dims_t wei_1d_dims = {p->g, p->oc / p->g, p->ic / p->g, p->kw};
+            dnnl_dims_t wei_2d_dims
+                    = {p->g, p->oc / p->g, p->ic / p->g, p->kh, p->kw};
+            dnnl_dims_t wei_3d_dims
+                    = {p->g, p->oc / p->g, p->ic / p->g, p->kd, p->kh, p->kw};
+
+            dnnl_dims_t bia_dims = {p->oc};
+
+            dnnl_dims_t dst_1d_dims = {p->mb, p->oc, p->ow};
+            dnnl_dims_t dst_2d_dims = {p->mb, p->oc, p->oh, p->ow};
+            dnnl_dims_t dst_3d_dims = {p->mb, p->oc, p->od, p->oh, p->ow};
+
+            dnnl_data_type_t src_dt = p->cfg[SRC].dt;
+            dnnl_data_type_t wei_dt = p->cfg[WEI].dt;
+            dnnl_data_type_t bia_dt = p->cfg[BIA].dt;
+            dnnl_data_type_t dst_dt = p->cfg[DST].dt;
+            dnnl_data_type_t acc_dt = p->cfg[ACC].dt;
+            dnnl_format_tag_t src_tag = p->stag;
+            dnnl_format_tag_t wei_tag = p->wtag;
+            dnnl_format_tag_t bia_tag = dnnl_format_tag_any;
+            dnnl_format_tag_t dst_tag = p->dtag;
+
+            DNN_SAFE(dnnl_memory_desc_init_by_tag(&src_d, ndims,
+                             is_problem_3d(p) ? src_3d_dims
+                                              : is_problem_1d(p) ? src_1d_dims
+                                                                 : src_2d_dims,
+                             src_dt, src_tag),
+                    WARN);
+
+            DNN_SAFE(dnnl_memory_desc_init_by_tag(&wei_d, ndims + p->has_groups,
+                             is_problem_3d(p) ? &wei_3d_dims[!p->has_groups]
+                                              : is_problem_1d(p)
+                                             ? &wei_1d_dims[!p->has_groups]
+                                             : &wei_2d_dims[!p->has_groups],
+                             wei_dt, wei_tag),
+                    WARN);
+
+            DNN_SAFE(dnnl_memory_desc_init_by_tag(
+                             &bia_d, 1, bia_dims, bia_dt, bia_tag),
+                    WARN);
+
+            DNN_SAFE(dnnl_memory_desc_init_by_tag(&dst_d, ndims,
+                             is_problem_3d(p) ? dst_3d_dims
+                                              : is_problem_1d(p) ? dst_1d_dims
+                                                                 : dst_2d_dims,
+                             dst_dt, dst_tag),
+                    WARN);
+
+            dnnl_dim_t strides_nd[] = {p->sd, p->sh, p->sw};
+            dnnl_dim_t dilates_nd[] = {p->dd, p->dh, p->dw};
+            dnnl_dim_t padding_nd[] = {p->pd, p->ph, p->pw};
+
+            auto bph = [&](int64_t ih, int64_t oh, int64_t kh, int64_t sh,
+                               int64_t ph, int64_t dh) {
+                return (oh - 1) * sh - ih + ((kh - 1) * (dh + 1) + 1) - ph;
+            };
+            dnnl_dim_t padding_r_nd[]
+                    = {bph(p->id, p->od, p->kd, p->sd, p->pd, p->dd),
+                            bph(p->ih, p->oh, p->kh, p->sh, p->ph, p->dh),
+                            bph(p->iw, p->ow, p->kw, p->sw, p->pw, p->dw)};
+
+            dnnl_dim_t *strides = strides_nd + (5 - ndims);
+            dnnl_dim_t *dilates = dilates_nd + (5 - ndims);
+            dnnl_dim_t *padding = padding_nd + (5 - ndims);
+            dnnl_dim_t *padding_r = padding_r_nd + (5 - ndims);
+
+            dnnl_alg_kind_t alg = dnnl_convolution_direct;
+            if (p->alg == WINO) alg = dnnl_convolution_winograd;
+            if (p->alg == AUTO) alg = dnnl_convolution_auto;
+
+            switch (p->dir) {
+                case FWD_D:
+                case FWD_B:
+                case FWD_I:
+                    DNN_SAFE(dnnl_dilated_convolution_forward_desc_init(&cd,
+                                     p->dir == FWD_I ? dnnl_forward_inference
+                                                     : dnnl_forward_training,
+                                     alg, &src_d, &wei_d,
+                                     p->dir == FWD_B ? &bia_d : NULL, &dst_d,
+                                     strides, dilates, padding, padding_r),
+                            WARN);
+                    break;
+                case BWD_D:
+                    DNN_SAFE(dnnl_dilated_convolution_backward_data_desc_init(
+                                     &cd, alg, &src_d, &wei_d, &dst_d, strides,
+                                     dilates, padding, padding_r),
+                            WARN);
+                    break;
+                case BWD_W:
+                case BWD_WB:
+                    DNN_SAFE(
+                            dnnl_dilated_convolution_backward_weights_desc_init(
+                                    &cd, alg, &src_d, &wei_d,
+                                    p->dir == BWD_W ? NULL : &bia_d, &dst_d,
+                                    strides, dilates, padding, padding_r),
+                            WARN);
+                    break;
+                default: DNN_SAFE(dnnl_invalid_arguments, CRIT);
+            }
+
+            DNN_SAFE(cd.accum_data_type == acc_dt ? dnnl_success
+                                                  : dnnl_unimplemented,
+                    CRIT);
+#if 0
+            dnnl_status_t init_status = dnnl_success;
+            init_status = dnnl_primitive_desc_create(&cpd, &cd, dnnl_attr, eng, NULL);
+            if (init_status == dnnl_unimplemented) SAFE_V(FAIL);
+#endif
+        }
+
+        benchdnn_timer_t &t = r->timer;
+
+        std::vector<dnnl_exec_arg_t> dnnl_args;
+        execute_unmap_args(args, dnnl_args);
+
+        t.reset();
+        while (true) {
+            if (benchmark_mode == BM_CREATE_EXEC) {
+                dnnl_primitive_t p_ = nullptr;
+
+                DNN_SAFE(dnnl_primitive_create(&p_, const_cpd), CRIT);
+                DNN_SAFE(dnnl_primitive_execute(p_, stream_tgt,
+                                 (int)dnnl_args.size(), dnnl_args.data()),
+                        WARN);
+
+                dnnl_primitive_destroy(p_);
+
+            } else if (benchmark_mode == BM_CLONE_PD_CREATE_EXEC) {
+                dnnl_primitive_desc_t pd_ = nullptr;
+                dnnl_primitive_t p_ = nullptr;
+
+                DNN_SAFE(dnnl_primitive_desc_clone(&pd_, const_cpd), CRIT);
+                DNN_SAFE(dnnl_primitive_create(&p_, pd_), CRIT);
+                DNN_SAFE(dnnl_primitive_execute(p_, stream_tgt,
+                                 (int)dnnl_args.size(), dnnl_args.data()),
+                        WARN);
+
+                dnnl_primitive_desc_destroy(pd_);
+                dnnl_primitive_destroy(p_);
+            } else if (benchmark_mode == BM_CREATE_PD_CREATE_EXEC) {
+                dnnl_primitive_desc_t pd_ = nullptr;
+                dnnl_primitive_t p_ = nullptr;
+
+                // SAFE(init_pd(engine_tgt, p, cd_, pd_, r), CRIT);
+                DNN_SAFE(dnnl_primitive_desc_create(
+                                 &pd_, &cd, dnnl_attr, engine_tgt, NULL),
+                        CRIT);
+                DNN_SAFE(dnnl_primitive_create(&p_, pd_), CRIT);
+                DNN_SAFE(dnnl_primitive_execute(p_, stream_tgt,
+                                 (int)dnnl_args.size(), dnnl_args.data()),
+                        WARN);
+
+                dnnl_primitive_desc_destroy(pd_);
+                dnnl_primitive_destroy(p_);
+            } else {
+                SAFE_V(FAIL);
+            }
+
+            t.stamp();
+            if (should_stop(t)) break;
+        }
+
+        execute_map_args(args);
+
+        dnnl_primitive_attr_destroy(dnnl_attr);
+
+    } else {
+        measure_perf(r->timer, c, args);
+    }
 
     DNN_SAFE(dnnl_primitive_destroy(c), CRIT);
     DNN_SAFE(dnnl_primitive_destroy(c_ref), CRIT);
