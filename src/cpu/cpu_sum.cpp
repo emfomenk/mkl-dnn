@@ -16,6 +16,7 @@
 
 #include "cpu/cpu_engine.hpp"
 
+#include "cpu/skel_sum.hpp"
 #include "cpu/ref_sum.hpp"
 #include "cpu/simple_sum.hpp"
 
@@ -35,6 +36,7 @@ namespace {
 #define INSTANCE(...) __VA_ARGS__::pd_t::create,
 #define INSTANCE_X64(...) DNNL_X64_ONLY(INSTANCE(__VA_ARGS__))
 static const spd_create_f cpu_sum_impl_list[] = {
+        INSTANCE(skel_sum_t)
         INSTANCE_X64(jit_bf16_sum_t<data_type::bf16, data_type::bf16>)
         INSTANCE_X64(jit_bf16_sum_t<data_type::bf16, data_type::f32>)
         INSTANCE(simple_sum_t<data_type::bf16>)
