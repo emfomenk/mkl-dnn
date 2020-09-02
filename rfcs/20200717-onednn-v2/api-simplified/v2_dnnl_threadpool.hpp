@@ -2,12 +2,12 @@
 #include "dnnl_threadpool_iface.hpp"
 
 namespace dnnl {
-namespace threadpool {
+namespace threadpool_interop {
 
 // option 1a (preferable, but breaks backwards compatibility)
 // The flags are dropped, the `in_order` is assumed.
-stream stream_create(const engine &e, threadpool_iface *threadpool);
-threadpool_iface *stream_get_threadpool(const stream &s);
+stream make_stream(const engine &e, threadpool_iface *threadpool);
+threadpool_iface *get_threadpool(const stream &s);
 
 #if 0
 // option 1b (preferable, but breaks backwards compatibility)
